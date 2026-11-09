@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from pathlib import Path
 import shutil
@@ -25,7 +26,6 @@ def move_to_archive(file_path: Path, archive_dir: Path):
     month_folder = archive_dir / datetime.now().strftime("%Y-%m")
     month_folder.mkdir(parents=True, exist_ok=True)
     destination = month_folder / file_path.name
-    # 同名ファイル対策
     if destination.exists():
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         destination = month_folder / f"{file_path.stem}_{timestamp}{file_path.suffix}"
@@ -40,8 +40,22 @@ def move_to_failed(file_path: Path, failed_dir: Path):
         destination = failed_dir / f"{file_path.stem}_{timestamp}{file_path.suffix}"
     shutil.move(str(file_path), str(destination))
 
+def process_image_worker(extractor: ReceiptExtractor, img_path: Path) -> Tuple[Path, ReceiptData | None, Exception | None]:
+    """1枚のレシート画像を解析するワーカースレッド用関数"""
+    try:
+        data = extractor.extract_from_image(img_path)
+        return (img_path, data, None)
+    except Exception as e:
+        return (img_path, None, e)
+
 def main():
     parser = argparse.ArgumentParser(description="Receipt Scanner - Batch scan and export to Google Sheets")
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=5,
+        help="Number of parallel workers for Gemini API requests (default: 5)",
+    )
     parser.add_argument(
         "--dry-run",
         action="store_true",
@@ -57,21 +71,33 @@ def main():
         print("   画像を配置してから再度実行してください。対応形式:", ", ".join(SUPPORTED_EXTENSIONS))
         sys.exit(0)
 
-    print(f"🚀 {len(image_files)} 枚のレシート画像を検出しました。解析を開始します...\n")
+    total_images = len(image_files)
+    workers = min(args.workers, total_images)
+    print(f"🚀 {total_images} 枚のレシート画像を検出しました。並列数 {workers} で解析を開始します...\n")
 
     extractor = ReceiptExtractor()
     successful_results: List[Tuple[ReceiptData, Path]] = []
     failed_files: List[Tuple[Path, Exception]] = []
 
-    for idx, img_path in enumerate(image_files, 1):
-        print(f"[{idx}/{len(image_files)}] 解析中: {img_path.name} ... ", end="", flush=True)
-        try:
-            data = extractor.extract_from_image(img_path)
-            print(f"✅ 成功! (店舗: {data.store_name}, 金額: {data.total_amount:,}円, 日付: {data.date}, カテゴリ: {data.category})")
-            successful_results.append((data, img_path))
-        except Exception as e:
-            print(f"❌ 失敗: {e}")
-            failed_files.append((img_path, e))
+    # スレッドプールによる並列処理
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        future_to_file = {
+            executor.submit(process_image_worker, extractor, path): path
+            for path in image_files
+        }
+
+        completed_count = 0
+        for future in as_completed(future_to_file):
+            completed_count += 1
+            img_path, data, error = future.result()
+
+            if error is None and data is not None:
+                print(f"[{completed_count}/{total_images}] ✅ 成功: {img_path.name} "
+                      f"(店舗: {data.store_name}, 金額: {data.total_amount:,}円, 日付: {data.date}, カテゴリ: {data.category})")
+                successful_results.append((data, img_path))
+            else:
+                print(f"[{completed_count}/{total_images}] ❌ 失敗: {img_path.name} -> {error}")
+                failed_files.append((img_path, error))
 
     print("\n--------------------------------------------------")
     print(f"📊 解析完了: 成功 {len(successful_results)} 件 / 失敗 {len(failed_files)} 件")
@@ -83,7 +109,7 @@ def main():
 
     # スプレッドシートへの一括書き込み
     if successful_results:
-        print("📝 Google スプレッドシートに書き込み中...")
+        print("📝 Google スプレッドシートに一括書き込み中...")
         sheets_client = SheetsClient()
         sheets_payload = [(data, path.name) for data, path in successful_results]
         count = sheets_client.append_receipts(sheets_payload)
