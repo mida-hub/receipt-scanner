@@ -14,8 +14,10 @@ class Config:
         os.getenv("GOOGLE_APPLICATION_CREDENTIALS", BASE_DIR / "credentials/service_account.json")
     )
 
-    # Gemini モデル
+    # Gemini モデル & 画像最適化設定
     GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
+    MAX_IMAGE_SIZE = int(os.getenv("MAX_IMAGE_SIZE", "1024"))
+    JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "80"))
 
     # スプレッドシート設定
     SPREADSHEET_ID = os.getenv(
