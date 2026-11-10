@@ -1,6 +1,7 @@
+import io
 import os
 from pathlib import Path
-from PIL import Image
+from PIL import Image, ImageOps
 import pillow_heif
 from google import genai
 from google.genai import types
@@ -53,23 +54,45 @@ class ReceiptExtractor:
                 location=Config.LOCATION,
             )
 
+    @staticmethod
+    def _prepare_image_bytes(image_path: Path) -> bytes:
+        """
+        画像をメモリ上でリサイズ＆JPEG圧縮し、API送信用のバイト列を生成する。
+        （元の画像ファイルは一切変更しない）
+        """
+        with Image.open(image_path) as img:
+            # スマホ写真のEXIF回転情報を適用して正しい向きに補正
+            img = ImageOps.exif_transpose(img)
+            rgb_img = img.convert("RGB")
+            # アスペクト比を維持したまま長辺を MAX_IMAGE_SIZE (デフォルト1024px) に縮小
+            rgb_img.thumbnail(
+                (Config.MAX_IMAGE_SIZE, Config.MAX_IMAGE_SIZE),
+                Image.Resampling.LANCZOS,
+            )
+            buf = io.BytesIO()
+            rgb_img.save(buf, format="JPEG", quality=Config.JPEG_QUALITY, optimize=True)
+            return buf.getvalue()
+
     def extract_from_image(self, image_path: Path) -> ReceiptData:
         """レシート画像から構造化データを抽出する"""
-        with Image.open(image_path) as img:
-            rgb_img = img.convert("RGB")
+        jpeg_bytes = self._prepare_image_bytes(image_path)
 
-            response = self.client.models.generate_content(
-                model=Config.GEMINI_MODEL,
-                contents=[
-                    rgb_img,
-                    "このレシート画像から支払日・店舗名・支払総額・カテゴリ・振り返り用購入品メモを抽出してください。"
-                ],
-                config=types.GenerateContentConfig(
-                    system_instruction=SYSTEM_INSTRUCTION,
-                    response_mime_type="application/json",
-                    response_schema=ReceiptData,
-                    temperature=0.1,
-                )
-            )
+        response = self.client.models.generate_content(
+            model=Config.GEMINI_MODEL,
+            contents=[
+                types.Part.from_bytes(data=jpeg_bytes, mime_type="image/jpeg"),
+                "このレシート画像から支払日・店舗名・支払総額・カテゴリ・振り返り用購入品メモを抽出してください。",
+            ],
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                response_schema=ReceiptData,
+                temperature=0.1,
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MINIMAL
+                ),
+                media_resolution=types.MediaResolution.MEDIA_RESOLUTION_MEDIUM,
+            ),
+        )
 
-            return ReceiptData.model_validate_json(response.text)
+        return ReceiptData.model_validate_json(response.text)
