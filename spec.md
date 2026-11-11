@@ -28,8 +28,9 @@ receipt-scanner/
 │   ├── extractor.py      # Gemini 3.5 Flash (Vertex AI) による画像構造化
 │   ├── models.py         # Pydantic スキーマ・カテゴリ定義
 │   └── sheets.py         # Google Sheets API (gspread) 連携モジュール
-├── receipts/             # レシート画像保管ディレクトリ（git除外）
+├── receipts/             # レシート画像・中間データ保管ディレクトリ（git除外）
 │   ├── inbox/            # 取り込み対象の未処理画像（.jpg, .jpeg, .png, .heic等）
+│   ├── pending/          # Gemini解析済み・スプレッドシート未記帳のJSONファイル
 │   ├── archive/          # 処理完了画像（年-月ごとにサブフォルダ移動）
 │   └── failed/           # パース・処理失敗画像
 └── terraform/            # GCP インフラ自動構築コード
@@ -87,24 +88,32 @@ class ReceiptData(BaseModel):
   * 明細から代表的な購入品目を抽出し、`memo` フィールドに要約。
 
 ### 3.3 スプレッドシート連携 (`src/receipt_scanner/sheets.py`)
-* **ライブラリ**: `gspread` + `google-auth`
+* **ライブラリ**: `gspread` + `google-auth` + `tenacity`
 * **認証**: サービスアカウント秘密鍵 (`credentials/service_account.json`)
 * **シート列定義**:
   | A列 | B列 | C列 | D列 | E列 | F列 | G列 |
   | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
   | 記帳日時 | 購入日 | 店舗名 | 金額 | カテゴリ | 購入品・内訳メモ | ファイル名 |
-* **書き込み方式**:
+* **書き込み方式 & リトライ**:
   * 複数レシートの解析結果をバッファリングし、`append_rows` で一括書き込み（高速化 & API上限対策）。
+  * Google Sheets API の一時エラー（`429`, `500`, `502`, `503`, `504` 等）やネットワークエラー発生時は、指数バックオフ（最大5回）で自動リトライを行う。
 
 ### 3.4 ファイルライフサイクル管理 (`main.py`, `src/receipt_scanner/config.py`)
-1. `receipts/inbox/` 内の画像ファイルを走査。
-2. 1枚ずつ順次 Gemini 解析を実行。
-3. 成功時:
-   * スプレッドシート書き込み用バッファに追加。
-   * 画像を `receipts/archive/YYYY-MM/` へ自動移動（同名ファイル衝突回避タイムスタンプ付き）。
-4. 失敗時:
-   * エラーログを出力し、画像を `receipts/failed/` へ移動。
-5. 全件完了後、スプレッドシートへ一括追記してサマリーログを出力。
+**Step 1: Gemini による画像解析（`receipts/inbox/` に画像がある場合）**
+1. `receipts/inbox/` 内の画像ファイルを走査し、並列（デフォルト5並列）で Gemini 解析を実行。
+2. 解析成功時:
+   * 抽出結果（`PendingReceipt`）を `receipts/pending/<ファイル名>.json` として即座に保存。
+   * 元画像を `receipts/archive/YYYY-MM/` へ自動移動（同名ファイル衝突回避タイムスタンプ付き）。
+3. 解析失敗時:
+   * エラーログを出力し、元画像を `receipts/failed/` へ移動。
+
+**Step 2: スプレッドシートへの書き込み（`receipts/pending/` にJSONファイルがある場合）**
+1. `receipts/inbox/` が空であっても、`receipts/pending/` に未記帳の JSON ファイルが存在すれば書き込み処理を実施する。
+2. `receipts/pending/*.json` を読み込み、スプレッドシートへ一括追記（自動リトライ付き）。
+3. 書き込み成功時:
+   * 追記が完了した `receipts/pending/*.json` ファイルをすべて削除する。
+4. 書き込み失敗時:
+   * `receipts/pending/*.json` ファイルはそのまま残し、次回起動時に Gemini 解析をやり直すことなくスプレッドシート書き込みのみ再実行できるようにする。
 
 ---
 

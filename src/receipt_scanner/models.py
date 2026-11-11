@@ -40,3 +40,8 @@ class ReceiptData(BaseModel):
         default="",
         description="振り返り用の主要購入品目（例: 洗濯機, ガソリン, 外食ランチ, 日用品まとめ買い 等）。後の振り返りで「何を買ったか」が分かるように具体的に記載してください"
     )
+
+class PendingReceipt(BaseModel):
+    """Gemini解析完了後、スプレッドシート記帳待ちの中間保存データ"""
+    filename: str = Field(description="元のレシート画像ファイル名")
+    data: ReceiptData = Field(description="抽出されたレシートデータ")

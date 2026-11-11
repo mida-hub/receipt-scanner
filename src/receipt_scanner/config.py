@@ -28,11 +28,13 @@ class Config:
 
     # レシート保存ディレクトリ
     INBOX_DIR = BASE_DIR / os.getenv("INBOX_DIR", "receipts/inbox")
+    PENDING_DIR = BASE_DIR / os.getenv("PENDING_DIR", "receipts/pending")
     ARCHIVE_DIR = BASE_DIR / os.getenv("ARCHIVE_DIR", "receipts/archive")
     FAILED_DIR = BASE_DIR / os.getenv("FAILED_DIR", "receipts/failed")
 
     @classmethod
     def ensure_dirs(cls):
         cls.INBOX_DIR.mkdir(parents=True, exist_ok=True)
+        cls.PENDING_DIR.mkdir(parents=True, exist_ok=True)
         cls.ARCHIVE_DIR.mkdir(parents=True, exist_ok=True)
         cls.FAILED_DIR.mkdir(parents=True, exist_ok=True)
