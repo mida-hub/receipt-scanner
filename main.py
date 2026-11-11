@@ -4,6 +4,7 @@ from datetime import datetime
 from pathlib import Path
 import shutil
 import sys
+import time
 from typing import List, Tuple
 
 from receipt_scanner.config import Config
@@ -99,6 +100,8 @@ def main():
         print("   画像を配置してから再度実行してください。対応形式:", ", ".join(SUPPORTED_EXTENSIONS))
         sys.exit(0)
 
+    start_time = time.perf_counter()
+
     # =========================================================================
     # Step 1: Gemini による画像解析 (inbox に画像がある場合)
     # =========================================================================
@@ -151,7 +154,8 @@ def main():
         print(f"ℹ️  '{Config.INBOX_DIR}' に新規画像はありません。未記帳データの書き込み処理へ進みます。\n")
 
     if args.dry_run:
-        print("🔍 [--dry-run モード] ファイル保存・移動およびスプレッドシートへの書き込みはスキップしました。")
+        elapsed = time.perf_counter() - start_time
+        print(f"🔍 [--dry-run モード] ファイル保存・移動およびスプレッドシートへの書き込みはスキップしました。 (所要時間: {elapsed:.2f}秒)")
         return
 
     # =========================================================================
@@ -159,7 +163,8 @@ def main():
     # =========================================================================
     pending_files = find_pending_jsons(Config.PENDING_DIR)
     if not pending_files:
-        print("🎉 すべての処理が完了しました！（記帳対象データ 0 件）")
+        elapsed = time.perf_counter() - start_time
+        print(f"🎉 すべての処理が完了しました！（記帳対象データ 0 件 / 所要時間: {elapsed:.2f}秒）")
         return
 
     print(f"📝 '{Config.PENDING_DIR}' 内の {len(pending_files)} 件のデータを Google スプレッドシートに一括書き込み中...")
@@ -186,11 +191,13 @@ def main():
                 json_path.unlink(missing_ok=True)
             print(f"🗑️  書き込み完了した '{Config.PENDING_DIR}' 内の {len(valid_json_paths)} 件の一時ファイルを削除しました。")
         except Exception as e:
-            print(f"\n❌ スプレッドシートへの書き込みに失敗しました: {e}")
+            elapsed = time.perf_counter() - start_time
+            print(f"\n❌ スプレッドシートへの書き込みに失敗しました (経過時間: {elapsed:.2f}秒): {e}")
             print(f"💡 解析済みデータは '{Config.PENDING_DIR}' に保持されています。次回実行時に再試行されます。")
             sys.exit(1)
 
-    print("\n🎉 すべての処理が完了しました！")
+    elapsed = time.perf_counter() - start_time
+    print(f"\n🎉 すべての処理が完了しました！ (所要時間: {elapsed:.2f}秒)")
 
 if __name__ == "__main__":
     main()
