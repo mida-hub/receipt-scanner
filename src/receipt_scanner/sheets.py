@@ -1,7 +1,15 @@
 from datetime import datetime
 from typing import List, Tuple
 import gspread
+from gspread.exceptions import APIError
 from google.oauth2.service_account import Credentials
+import requests.exceptions
+from tenacity import (
+    retry,
+    retry_if_exception,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from receipt_scanner.config import Config
 from receipt_scanner.models import ReceiptData
@@ -22,7 +30,31 @@ HEADER_ROW = [
     "ファイル名",
 ]
 
+def _is_retryable_sheets_error(exc: BaseException) -> bool:
+    """Google Sheets API の一時エラー (429, 500, 502, 503, 504) や通信エラーかを判定"""
+    if isinstance(exc, APIError):
+        status_code = getattr(exc.response, "status_code", None) or getattr(exc, "code", None)
+        return status_code in (429, 500, 502, 503, 504)
+    if isinstance(exc, requests.exceptions.RequestException):
+        return True
+    return False
+
+def _log_retry(retry_state):
+    attempt = retry_state.attempt_number
+    exc = retry_state.outcome.exception()
+    wait_sec = retry_state.next_action.sleep
+    print(f"⚠️  Google Sheets API 一時エラー (試行 {attempt} 回目: {exc})。{wait_sec:.1f}秒後にリトライします...")
+
+sheets_retry = retry(
+    retry=retry_if_exception(_is_retryable_sheets_error),
+    wait=wait_exponential(multiplier=2, min=2, max=30),
+    stop=stop_after_attempt(5),
+    before_sleep=_log_retry,
+    reraise=True,
+)
+
 class SheetsClient:
+    @sheets_retry
     def __init__(self):
         credentials = Credentials.from_service_account_file(
             str(Config.CREDENTIALS_PATH),
@@ -48,6 +80,7 @@ class SheetsClient:
                 ws.update("A1:G1", [HEADER_ROW])
         return ws
 
+    @sheets_retry
     def append_receipts(self, receipts: List[Tuple[ReceiptData, str]]) -> int:
         """
         レシートのリストを一括追記する。

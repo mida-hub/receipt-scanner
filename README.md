@@ -13,9 +13,9 @@
   * 「今月このカテゴリが増えたのはなぜか？」を振り返りやすいよう、レシート内の主要品目を自動でメモ列に記録。
 * **iPhone (HEIC) 写真対応**:
   * iPhoneの標準カメラで撮影された `.HEIC` 形式、一般的な `.jpg`, `.jpeg`, `.png`, `.webp` をそのまま投入可能。
-* **安全なファイルライフサイクル管理**:
-  * 処理完了画像は `receipts/archive/YYYY-MM/` へ自動退避。
-  * 失敗画像は `receipts/failed/` に移動するため、再試行や手動確認が容易。
+* **安全な2段階ファイルライフサイクル管理 & 自動リトライ**:
+  * **Step 1（Gemini解析）**: 解析成功時に結果を `receipts/pending/` にJSON保存し、元画像は即座に `receipts/archive/YYYY-MM/` へ自動退避（失敗画像は `receipts/failed/` へ移動）。
+  * **Step 2（スプレッドシート記帳）**: `receipts/pending/` 内のJSONデータを一括記帳（一時的な `503` エラー等に対する自動リトライ機能付き）。記帳完了後にJSONファイルを削除。万一記帳が失敗しても、次回実行時に Gemini 再解析なしで記帳のみ再実行可能。
   * 書き込み前に確認できる `--dry-run` モード搭載。
 
 ---
@@ -29,8 +29,9 @@ receipt-scanner/
 ├── credentials/          # サービスアカウント鍵（git除外）
 │   └── service_account.json
 ├── main.py               # 実行エントリポイント
-├── receipts/             # レシート画像保管場所（git除外）
+├── receipts/             # レシート画像・中間データ保管場所（git除外）
 │   ├── inbox/            # 取り込み対象の未処理画像置き場
+│   ├── pending/          # Gemini解析済み・スプレッドシート未記帳のJSON置き場
 │   ├── archive/          # 処理完了画像（年-月ごとにサブフォルダ分け）
 │   └── failed/           # 処理失敗画像
 ├── src/receipt_scanner/  # コアモジュール

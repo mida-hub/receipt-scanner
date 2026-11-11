@@ -58,9 +58,11 @@ override.tf.json
 .terraformrc
 terraform.rc
 
-# Receipts storage (do not commit receipt photos)
+# Receipts storage (do not commit receipt photos or pending JSONs)
 receipts/inbox/*
 !receipts/inbox/.gitkeep
+receipts/pending/*
+!receipts/pending/.gitkeep
 receipts/archive/*
 !receipts/archive/.gitkeep
 receipts/failed/*

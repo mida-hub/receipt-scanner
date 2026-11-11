@@ -765,6 +765,7 @@ dependencies = [
     { name = "pillow-heif" },
     { name = "pydantic" },
     { name = "python-dotenv" },
+    { name = "tenacity" },
 ]
 
 [package.metadata]
@@ -775,6 +776,7 @@ requires-dist = [
     { name = "pillow-heif", specifier = ">=0.21.0" },
     { name = "pydantic", specifier = ">=2.10.0" },
     { name = "python-dotenv", specifier = ">=1.0.1" },
+    { name = "tenacity", specifier = ">=9.0.0" },
 ]
 
 [[package]]
