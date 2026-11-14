@@ -11,6 +11,7 @@ CategoryType = Literal[
     "美容",               # 美容室、コスメ、エステなど
     "ジム",               # フィットネス、パーソナルジムなど
     "その他",             # 上記に明確に該当しないもの
+    "",                   # 未分類（メール自動解析など）
 ]
 
 class ReceiptData(BaseModel):

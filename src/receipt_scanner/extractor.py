@@ -96,3 +96,35 @@ class ReceiptExtractor:
         )
 
         return ReceiptData.model_validate_json(response.text)
+
+    def extract_from_text(
+        self, text: str, subject: str = "", sender: str = "", date: str = ""
+    ) -> ReceiptData:
+        """メール本文などのテキストから構造化データを抽出する"""
+        prompt = (
+            "以下の注文確認・領収書メールのテキストから、支払日・店舗名（サービス名）・"
+            "支払総額・カテゴリ・振り返り用購入品メモを抽出してください。\n"
+            "※本文中に明確な注文日・支払日の記載がない場合や西暦が省略されている場合は、"
+            "以下の「メール受信日時」を基準に日付を補完してください。\n\n"
+            f"件名: {subject}\n"
+            f"送信元: {sender}\n"
+            f"メール受信日時: {date}\n"
+            "---\n"
+            f"{text}"
+        )
+
+        response = self.client.models.generate_content(
+            model=Config.GEMINI_MODEL,
+            contents=[prompt],
+            config=types.GenerateContentConfig(
+                system_instruction=SYSTEM_INSTRUCTION,
+                response_mime_type="application/json",
+                response_schema=ReceiptData,
+                temperature=0.1,
+                thinking_config=types.ThinkingConfig(
+                    thinking_level=types.ThinkingLevel.MINIMAL
+                ),
+            ),
+        )
+
+        return ReceiptData.model_validate_json(response.text)

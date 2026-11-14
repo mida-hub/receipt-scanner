@@ -8,7 +8,9 @@ import time
 from typing import List, Tuple
 
 from receipt_scanner.config import Config
+from receipt_scanner.email_parser import parse_email_to_receipts
 from receipt_scanner.extractor import ReceiptExtractor
+from receipt_scanner.gmail import GmailClient, GmailMessage
 from receipt_scanner.models import PendingReceipt, ReceiptData
 from receipt_scanner.sheets import SheetsClient
 
@@ -89,18 +91,68 @@ def main():
         action="store_true",
         help="Run extraction without saving pending JSONs, writing to Google Sheets, or moving files",
     )
+    parser.add_argument(
+        "--gmail",
+        action="store_true",
+        help="Fetch and parse order/receipt emails from Gmail using OAuth 2.0",
+    )
+    parser.add_argument(
+        "--gmail-query",
+        type=str,
+        default=None,
+        help="Override Gmail search query (default: Config.GMAIL_QUERY)",
+    )
+    parser.add_argument(
+        "--days",
+        type=int,
+        default=Config.GMAIL_DAYS,
+        help=f"Number of past days to search in Gmail (0 for no limit, default: {Config.GMAIL_DAYS})",
+    )
     args = parser.parse_args()
 
     Config.ensure_dirs()
     image_files = find_receipt_images(Config.INBOX_DIR)
     existing_pending = find_pending_jsons(Config.PENDING_DIR)
 
-    if not image_files and not existing_pending:
+    if not image_files and not existing_pending and not args.gmail:
         print(f"ℹ️  '{Config.INBOX_DIR}' に未処理の画像がなく、'{Config.PENDING_DIR}' にも未記帳データがありません。")
-        print("   画像を配置してから再度実行してください。対応形式:", ", ".join(SUPPORTED_EXTENSIONS))
+        print("   画像を配置するか --gmail オプションを指定して実行してください。")
         sys.exit(0)
 
     start_time = time.perf_counter()
+
+    # =========================================================================
+    # Step 0: Gmail からの注文・領収書メール取得 & 解析 (--gmail 指定時)
+    # =========================================================================
+    if args.gmail:
+        print("📧 Gmail に接続して未処理メールを取得しています...")
+        gmail_client = GmailClient()
+        label_id = gmail_client.get_or_create_label_id(Config.GMAIL_PROCESSED_LABEL)
+        messages = gmail_client.fetch_unprocessed_messages(
+            query=args.gmail_query, days=args.days
+        )
+
+        if not messages:
+            print("ℹ️  Gmail に未処理の対象メールはありませんでした。\n")
+        else:
+            print(f"📬 {len(messages)} 件の未処理メールを検出しました。メール内容を解析します...\n")
+            for msg in messages:
+                try:
+                    receipts = parse_email_to_receipts(msg)
+                    for idx, data in enumerate(receipts, start=1):
+                        print(
+                            f"  ✅ [Gmail:{msg.message_id}#{idx}] {data.date} | {data.store_name} | "
+                            f"¥{data.total_amount:,} | {data.category or '(未分類)'} | {data.memo}"
+                        )
+                        if not args.dry_run:
+                            save_pending_receipt(
+                                data, f"gmail_{msg.message_id}_{idx}", Config.PENDING_DIR
+                            )
+                    if not args.dry_run:
+                        gmail_client.mark_as_processed(msg.message_id, label_id)
+                except Exception as e:
+                    print(f"  ❌ [Gmail:{msg.message_id}] 解析エラー ({msg.subject}): {e}")
+            print()
 
     # =========================================================================
     # Step 1: Gemini による画像解析 (inbox に画像がある場合)
