@@ -1,6 +1,7 @@
 # Receipt Scanner (レシート一括解析＆自動記帳システム)
 
 スマホで撮影したレシート画像をフォルダに放り込み、コマンドを実行するだけで **Gemini 3.5 Flash (Vertex AI)** が高精度に構造化（店舗名・金額・日付・カテゴリ・振り返り用購入品メモ）し、**Google スプレッドシート** へ一括自動記帳するシステムです。
+また、`--gmail` オプションを指定することで、**Gmail に届く Amazon・楽天市場の注文確認メール** もあわせて自動解析・記帳できます。
 
 ---
 
@@ -17,6 +18,10 @@
   * **Step 1（Gemini解析）**: 解析成功時に結果を `receipts/pending/` にJSON保存し、元画像は即座に `receipts/archive/YYYY-MM/` へ自動退避（失敗画像は `receipts/failed/` へ移動）。
   * **Step 2（スプレッドシート記帳）**: `receipts/pending/` 内のJSONデータを一括記帳（一時的な `503` エラー等に対する自動リトライ機能付き）。記帳完了後にJSONファイルを削除。万一記帳が失敗しても、次回実行時に Gemini 再解析なしで記帳のみ再実行可能。
   * 書き込み前に確認できる `--dry-run` モード搭載。
+* **Gmail 注文メール自動取り込み（OAuth 2.0）**:
+  * `--gmail` 指定時、Amazon (`auto-confirm@amazon.co.jp`) および楽天市場 (`order@rakuten.co.jp`) の未処理注文メールを機械的に解析（LLM 不使用で高速・API コストゼロ、カテゴリは空欄）。
+  * Amazon は商品明細ごとに 1 行出力し、ポイント・割引等の差額がある場合は調整行を自動追加。
+  * 処理済みメールには Gmail 側で `receipt-scanned` ラベルを付与し、2重取り込みを防止。
 
 ---
 
@@ -26,8 +31,10 @@
 receipt-scanner/
 ├── .env                  # 環境設定（GCPプロジェクトID, スプレッドシートID等 / git除外）
 ├── .env.example          # 環境設定サンプル
-├── credentials/          # サービスアカウント鍵（git除外）
-│   └── service_account.json
+├── credentials/          # 認証情報（git除外）
+│   ├── service_account.json
+│   ├── gmail_client_secret.json  # Gmail OAuth 2.0 クライアントシークレット
+│   └── gmail_token.json          # Gmail OAuth 2.0 トークン（初回認証時に自動生成）
 ├── main.py               # 実行エントリポイント
 ├── receipts/             # レシート画像・中間データ保管場所（git除外）
 │   ├── inbox/            # 取り込み対象の未処理画像置き場
@@ -36,7 +43,9 @@ receipt-scanner/
 │   └── failed/           # 処理失敗画像
 ├── src/receipt_scanner/  # コアモジュール
 │   ├── config.py         # 環境設定・ディレクトリパス
+│   ├── email_parser.py   # Gmail 注文メールの機械的パーサー (Amazon / 楽天市場)
 │   ├── extractor.py      # Gemini 3.5 Flash による画像構造化
+│   ├── gmail.py          # Gmail API クライアント (OAuth 2.0)
 │   ├── models.py         # Pydantic スキーマ定義 (カテゴリ等)
 │   └── sheets.py         # Google スプレッドシート連携
 └── terraform/            # GCP インフラ定義 (API有効化 & サービスアカウント)
@@ -84,6 +93,12 @@ WORKSHEET_NAME=シート1
    terraform apply
    ```
 2. 発行された `credentials/service_account.json` のメールアドレス（`receipt-scanner@<PROJECT_ID>.iam.gserviceaccount.com`）を、記帳先 Google スプレッドシートの「共有」から **編集者** として追加してください。
+
+### 5. Gmail 連携（OAuth 2.0）※ `--gmail` 利用時のみ
+1. Google Cloud Console で **Gmail API** を有効化します。
+2. **「OAuth 同意画面」** のテストユーザーに、自分の Gmail アドレスを追加します。
+3. **「認証情報」＞「+ 認証情報を作成」＞「OAuth クライアント ID」** から、種類を **「デスクトップ アプリ」** として作成し、JSON をダウンロードして `credentials/gmail_client_secret.json` に配置します。
+4. 初回 `--gmail` 実行時にブラウザが開くのでログイン・許可すると、`credentials/gmail_token.json` が自動保存されます。
 
 ---
 
