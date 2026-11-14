@@ -26,6 +26,21 @@ class Config:
     )
     WORKSHEET_NAME = os.getenv("WORKSHEET_NAME", "シート1")
 
+    # Gmail 連携設定 (OAuth 2.0)
+    GMAIL_CREDENTIALS_PATH = Path(
+        os.getenv("GMAIL_CREDENTIALS_PATH", BASE_DIR / "credentials/gmail_client_secret.json")
+    )
+    GMAIL_TOKEN_PATH = Path(
+        os.getenv("GMAIL_TOKEN_PATH", BASE_DIR / "credentials/gmail_token.json")
+    )
+    GMAIL_QUERY = os.getenv(
+        "GMAIL_QUERY",
+        "from:auto-confirm@amazon.co.jp OR from:order@rakuten.co.jp",
+    )
+    GMAIL_PROCESSED_LABEL = os.getenv("GMAIL_PROCESSED_LABEL", "receipt-scanned")
+    GMAIL_MAX_RESULTS = int(os.getenv("GMAIL_MAX_RESULTS", "50"))
+    GMAIL_DAYS = int(os.getenv("GMAIL_DAYS", "10"))
+
     # レシート保存ディレクトリ
     INBOX_DIR = BASE_DIR / os.getenv("INBOX_DIR", "receipts/inbox")
     PENDING_DIR = BASE_DIR / os.getenv("PENDING_DIR", "receipts/pending")

@@ -12,6 +12,10 @@ dependencies = [
     "pillow-heif>=0.21.0",
     "python-dotenv>=1.0.1",
     "tenacity>=9.0.0",
+    "google-api-python-client>=2.202.0",
+    "google-auth-oauthlib>=1.5.0",
+    "google-auth-httplib2>=0.4.4",
+    "beautifulsoup4>=4.15.0",
 ]
 
 [project.scripts]

@@ -41,7 +41,9 @@ venv.bak/
 credentials.json
 service_account.json
 token.json
+*token*.json
 client_secret*.json
+*client_secret*.json
 
 # Terraform
 **/.terraform/

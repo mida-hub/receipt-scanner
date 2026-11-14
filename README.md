@@ -97,10 +97,28 @@ WORKSHEET_NAME=シート1
 uv run main.py
 ```
 
-#### オプション: 事前プレビュー（ドライラン）
-スプレッドシートへの書き込みやファイルのアーカイブ移動を行わず、コンソール上で解析結果だけを確認したい場合：
+#### コマンド引数（オプション）
+
+| 引数 | 説明 | デフォルト |
+| :--- | :--- | :--- |
+| `--gmail` | Gmail から注文確認メール（Amazon / 楽天市場）を取得して解析する（未指定時はレシート画像のみ処理） | `False` |
+| `--days <日数>` | Gmail 検索の対象とする過去日数（`0` で日数制限なし） | `10` |
+| `--gmail-query <クエリ>` | Gmail の検索クエリを上書きする | `from:auto-confirm@amazon.co.jp OR from:order@rakuten.co.jp` |
+| `--workers <数>` | レシート画像解析時の Gemini API 並列実行数 | `5` |
+| `--dry-run` | ファイル保存・移動・Gmail ラベル付与・スプレッドシートへの書き込みを行わず、解析結果のみ表示する | `False` |
+
 ```bash
+# 事前プレビュー（ドライラン）
 uv run main.py --dry-run
+
+# Gmail の注文メールもあわせて取り込む（過去10日間）
+uv run main.py --gmail
+
+# Gmail の対象期間を過去30日間に広げてドライラン
+uv run main.py --gmail --days 30 --dry-run
+
+# 特定の送信元だけを対象にする
+uv run main.py --gmail --gmail-query "from:order@rakuten.co.jp" --dry-run
 ```
 
 ### Step 3: スプレッドシートで確認
