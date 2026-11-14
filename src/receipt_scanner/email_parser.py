@@ -34,6 +34,8 @@ def _parse_store_name(sender: str, subject: str) -> str:
         return "楽天市場"
     if "yodobashi.com" in lower_sender or "ヨドバシ" in subject:
         return "ヨドバシ.com"
+    if "yoshikei.gr.jp" in lower_sender or "ヨシケイ" in subject:
+        return "ヨシケイ"
 
     # "表示名 <addr@example.com>" から表示名を抽出
     match = re.match(r'^"?([^"<]+)"?\s*<', sender.strip())
@@ -155,12 +157,13 @@ def parse_email_to_receipts(msg: GmailMessage) -> List[ReceiptData]:
         return receipts
 
     memo = _parse_memo(msg.body, msg.subject)
+    category = "食費" if store_name == "ヨシケイ" else ""
     return [
         ReceiptData(
             date=date_str,
             store_name=store_name,
             total_amount=total_amount,
-            category="",
+            category=category,
             memo=memo,
         )
     ]
