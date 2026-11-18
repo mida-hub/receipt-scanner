@@ -11,7 +11,6 @@ CategoryType = Literal[
     "美容",               # 美容室、コスメ、エステなど
     "ジム",               # フィットネス、パーソナルジムなど
     "その他",             # 上記に明確に該当しないもの
-    "",                   # 未分類（メール自動解析など）
 ]
 
 class ReceiptData(BaseModel):
@@ -25,6 +24,17 @@ class ReceiptData(BaseModel):
     total_amount: int = Field(
         description="支払合計金額（税込）。値引き・ポイント利用後の実際の最終支払金額を数値のみで抽出"
     )
+    category: str = Field(
+        default="",
+        description="支出カテゴリ",
+    )
+    memo: str = Field(
+        default="",
+        description="振り返り用の主要購入品目（例: 洗濯機, ガソリン, 外食ランチ, 日用品まとめ買い 等）。後の振り返りで「何を買ったか」が分かるように具体的に記載してください"
+    )
+
+class GeminiReceiptData(ReceiptData):
+    """Gemini Vision API の response_schema 用（カテゴリを8択に厳密制限）"""
     category: CategoryType = Field(
         description="""支出カテゴリ。以下のルールで分類してください:
 - 食費: スーパー・コンビニ・外食・カフェなど
@@ -37,10 +47,7 @@ class ReceiptData(BaseModel):
 - その他: 上記に当てはまらない支出
 """
     )
-    memo: str = Field(
-        default="",
-        description="振り返り用の主要購入品目（例: 洗濯機, ガソリン, 外食ランチ, 日用品まとめ買い 等）。後の振り返りで「何を買ったか」が分かるように具体的に記載してください"
-    )
+
 
 class PendingReceipt(BaseModel):
     """Gemini解析完了後、スプレッドシート記帳待ちの中間保存データ"""

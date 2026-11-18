@@ -7,7 +7,7 @@ from google import genai
 from google.genai import types
 
 from receipt_scanner.config import Config
-from receipt_scanner.models import ReceiptData
+from receipt_scanner.models import GeminiReceiptData, ReceiptData
 
 # HEIC 形式の登録 (iPhone写真対応)
 pillow_heif.register_heif_opener()
@@ -86,7 +86,7 @@ class ReceiptExtractor:
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
                 response_mime_type="application/json",
-                response_schema=ReceiptData,
+                response_schema=GeminiReceiptData,
                 temperature=0.1,
                 thinking_config=types.ThinkingConfig(
                     thinking_level=types.ThinkingLevel.MINIMAL
@@ -119,7 +119,7 @@ class ReceiptExtractor:
             config=types.GenerateContentConfig(
                 system_instruction=SYSTEM_INSTRUCTION,
                 response_mime_type="application/json",
-                response_schema=ReceiptData,
+                response_schema=GeminiReceiptData,
                 temperature=0.1,
                 thinking_config=types.ThinkingConfig(
                     thinking_level=types.ThinkingLevel.MINIMAL
