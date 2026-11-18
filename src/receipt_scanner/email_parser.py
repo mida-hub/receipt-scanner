@@ -133,7 +133,7 @@ def parse_email_to_receipts(msg: GmailMessage) -> List[ReceiptData]:
 
     if items:
         receipts = [
-            ReceiptData(
+            ReceiptData.model_construct(
                 date=date_str,
                 store_name=store_name,
                 total_amount=price,
@@ -146,7 +146,7 @@ def parse_email_to_receipts(msg: GmailMessage) -> List[ReceiptData]:
         diff = total_amount - items_sum
         if diff != 0:
             receipts.append(
-                ReceiptData(
+                ReceiptData.model_construct(
                     date=date_str,
                     store_name=store_name,
                     total_amount=diff,
@@ -159,7 +159,7 @@ def parse_email_to_receipts(msg: GmailMessage) -> List[ReceiptData]:
     memo = _parse_memo(msg.body, msg.subject)
     category = "食費" if store_name == "ヨシケイ" else ""
     return [
-        ReceiptData(
+        ReceiptData.model_construct(
             date=date_str,
             store_name=store_name,
             total_amount=total_amount,
