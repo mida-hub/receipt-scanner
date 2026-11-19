@@ -35,7 +35,7 @@ class Config:
     )
     GMAIL_QUERY = os.getenv(
         "GMAIL_QUERY",
-        "from:auto-confirm@amazon.co.jp OR from:order@rakuten.co.jp OR from:cib-jyuchu@yoshikei.gr.jp",
+        "from:auto-confirm@amazon.co.jp OR from:order@rakuten.co.jp OR from:cib-jyuchu@yoshikei.gr.jp OR (from:info@hulu.jp subject:ご請求のご連絡)",
     )
     GMAIL_PROCESSED_LABEL = os.getenv("GMAIL_PROCESSED_LABEL", "receipt-scanned")
     GMAIL_MAX_RESULTS = int(os.getenv("GMAIL_MAX_RESULTS", "50"))
