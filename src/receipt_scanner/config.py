@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 from dotenv import load_dotenv
 
+from receipt_scanner.email_parser import DEFAULT_GMAIL_QUERY
+
 # プロジェクトルートの .env をロード
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
 load_dotenv(BASE_DIR / ".env")
@@ -33,10 +35,7 @@ class Config:
     GMAIL_TOKEN_PATH = Path(
         os.getenv("GMAIL_TOKEN_PATH", BASE_DIR / "credentials/gmail_token.json")
     )
-    GMAIL_QUERY = os.getenv(
-        "GMAIL_QUERY",
-        "from:auto-confirm@amazon.co.jp OR from:order@rakuten.co.jp OR from:cib-jyuchu@yoshikei.gr.jp OR (from:info@hulu.jp subject:ご請求のご連絡)",
-    )
+    GMAIL_QUERY = os.getenv("GMAIL_QUERY", DEFAULT_GMAIL_QUERY)
     GMAIL_PROCESSED_LABEL = os.getenv("GMAIL_PROCESSED_LABEL", "receipt-scanned")
     GMAIL_MAX_RESULTS = int(os.getenv("GMAIL_MAX_RESULTS", "50"))
     GMAIL_DAYS = int(os.getenv("GMAIL_DAYS", "10"))
