@@ -1,8 +1,10 @@
+from dataclasses import dataclass
 from email.utils import parsedate_to_datetime
 import re
-from typing import List
+from typing import TYPE_CHECKING, Callable, List
 
-from receipt_scanner.gmail import GmailMessage
+if TYPE_CHECKING:
+    from receipt_scanner.gmail import GmailMessage
 from receipt_scanner.models import ReceiptData
 
 # 金額抽出用の正規表現パターン（優先度順）
@@ -24,18 +26,22 @@ def _parse_date(date_header: str) -> str:
         return ""
 
 
-def _parse_store_name(sender: str, subject: str) -> str:
-    """送信元や件名から店舗・サービス名を判定する"""
+def _match_shop_rule(sender: str, subject: str) -> "EmailShopRule | None":
+    """送信元や件名から一致するショップルールを検索する"""
     lower_sender = sender.lower()
     lower_subject = subject.lower()
-    if "amazon.co.jp" in lower_sender or "amazon" in lower_subject:
-        return "Amazon.co.jp"
-    if "rakuten.co.jp" in lower_sender or "楽天" in subject:
-        return "楽天市場"
-    if "yodobashi.com" in lower_sender or "ヨドバシ" in subject:
-        return "ヨドバシ.com"
-    if "yoshikei.gr.jp" in lower_sender or "ヨシケイ" in subject:
-        return "ヨシケイ"
+    for rule in SHOP_RULES:
+        if any(kw in lower_sender for kw in rule.sender_keywords) or any(
+            kw in lower_subject for kw in rule.subject_keywords
+        ):
+            return rule
+    return None
+
+
+def _parse_store_name(sender: str, rule: "EmailShopRule | None") -> str:
+    """ルールまたは送信元ヘッダーから店舗・サービス名を判定する"""
+    if rule is not None:
+        return rule.store_name
 
     # "表示名 <addr@example.com>" から表示名を抽出
     match = re.match(r'^"?([^"<]+)"?\s*<', sender.strip())
@@ -116,20 +122,71 @@ def _parse_rakuten_items(body: str) -> List[tuple[str, int]]:
     return items
 
 
-def parse_email_to_receipts(msg: GmailMessage) -> List[ReceiptData]:
+@dataclass(frozen=True)
+class EmailShopRule:
+    """メール取り込み対象ショップの定義"""
+
+    store_name: str
+    query: str = ""
+    sender_keywords: tuple[str, ...] = ()
+    subject_keywords: tuple[str, ...] = ()
+    default_category: str = ""
+    item_parser: Callable[[str], List[tuple[str, int]]] | None = None
+
+
+SHOP_RULES: List[EmailShopRule] = [
+    EmailShopRule(
+        store_name="Amazon.co.jp",
+        query="from:auto-confirm@amazon.co.jp",
+        sender_keywords=("amazon.co.jp",),
+        subject_keywords=("amazon",),
+        item_parser=_parse_amazon_items,
+    ),
+    EmailShopRule(
+        store_name="楽天市場",
+        query="from:order@rakuten.co.jp",
+        sender_keywords=("rakuten.co.jp",),
+        subject_keywords=("楽天",),
+        item_parser=_parse_rakuten_items,
+    ),
+    EmailShopRule(
+        store_name="ヨシケイ",
+        query="from:cib-jyuchu@yoshikei.gr.jp",
+        sender_keywords=("yoshikei.gr.jp",),
+        subject_keywords=("ヨシケイ",),
+        default_category="食費",
+    ),
+    EmailShopRule(
+        store_name="Hulu",
+        query="(from:info@hulu.jp subject:ご請求のご連絡)",
+        sender_keywords=("hulu.jp",),
+        subject_keywords=("hulu",),
+        default_category="その他",
+    ),
+    EmailShopRule(
+        store_name="ヨドバシ.com",
+        sender_keywords=("yodobashi.com",),
+        subject_keywords=("ヨドバシ",),
+    ),
+]
+
+DEFAULT_GMAIL_QUERY = " OR ".join(rule.query for rule in SHOP_RULES if rule.query)
+
+
+def parse_email_to_receipts(msg: "GmailMessage") -> List[ReceiptData]:
     """Gmail メッセージを機械的に解析して ReceiptData のリストに変換する（LLM不使用）"""
     date_str = _parse_date(msg.date)
     if not date_str:
         raise ValueError(f"メール日時を解析できませんでした: {msg.date}")
 
-    store_name = _parse_store_name(msg.sender, msg.subject)
+    rule = _match_shop_rule(msg.sender, msg.subject)
+    store_name = _parse_store_name(msg.sender, rule)
     total_amount = _parse_amount(msg.body)
+    default_category = rule.default_category if rule else ""
 
-    items: List[tuple[str, int]] = []
-    if store_name == "Amazon.co.jp":
-        items = _parse_amazon_items(msg.body)
-    elif store_name == "楽天市場":
-        items = _parse_rakuten_items(msg.body)
+    items: List[tuple[str, int]] = (
+        rule.item_parser(msg.body) if rule and rule.item_parser else []
+    )
 
     if items:
         receipts = [
@@ -137,7 +194,7 @@ def parse_email_to_receipts(msg: GmailMessage) -> List[ReceiptData]:
                 date=date_str,
                 store_name=store_name,
                 total_amount=price,
-                category="",
+                category=default_category,
                 memo=name,
             )
             for name, price in items
@@ -150,20 +207,19 @@ def parse_email_to_receipts(msg: GmailMessage) -> List[ReceiptData]:
                     date=date_str,
                     store_name=store_name,
                     total_amount=diff,
-                    category="",
+                    category=default_category,
                     memo="ポイント・割引・送料等調整",
                 )
             )
         return receipts
 
     memo = _parse_memo(msg.body, msg.subject)
-    category = "食費" if store_name == "ヨシケイ" else ""
     return [
         ReceiptData.model_construct(
             date=date_str,
             store_name=store_name,
             total_amount=total_amount,
-            category=category,
+            category=default_category,
             memo=memo,
         )
     ]
