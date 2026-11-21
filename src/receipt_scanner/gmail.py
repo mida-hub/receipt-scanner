@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import List
 
 from bs4 import BeautifulSoup
+from google.auth.exceptions import RefreshError
 from google.auth.transport.requests import Request
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import InstalledAppFlow
@@ -47,8 +48,13 @@ class GmailClient:
 
         if not creds or not creds.valid:
             if creds and creds.expired and creds.refresh_token:
-                creds.refresh(Request())
-            else:
+                try:
+                    creds.refresh(Request())
+                except RefreshError:
+                    print("⚠️  Gmail トークンの有効期限が切れています。ブラウザで再認証を行います...")
+                    creds = None
+
+            if not creds or not creds.valid:
                 if not self.credentials_path.exists():
                     raise FileNotFoundError(
                         f"Gmail OAuth クライアントシークレットが見つかりません: {self.credentials_path}\n"
